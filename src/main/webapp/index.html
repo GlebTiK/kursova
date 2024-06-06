@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Kursova</title>
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            :root {
+                --bs-body-color:#70757a;
+            }
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: Roboto, Arial, sans-serif;
+                font-weight: lighter;
+            }
+            html, body {
+                height: 100%;
+                width: 100%;
+                font-size: 18px;
+            }
+            #calendar {
+                min-height: 100%;
+                width: 100%;
+                position: relative;
+            }
+            #calendar > * {
+                width: 100%;
+            }
+            table {
+                border-collapse: collapse;
+                border-spacing: 0;
+            }
+            th {
+                font-size: 26px;
+            }
+            .small {
+                font-size: 13px;
+            }
+            td, th {
+                width: calc(100% / 7);
+                max-width: calc(100% / 7);
+                word-wrap: break-word;
+                word-break: break-all;
+            }
+
+            *::-webkit-scrollbar-track {
+                -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0);
+            }
+              
+            *::-webkit-scrollbar-thumb {
+                -webkit-border-radius: 12px;
+                border-radius: 12px;
+                background: rgba(0, 0, 0, 0.3);
+                -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+            }
+              
+            *::-webkit-scrollbar-thumb:window-inactive {
+                background: rgba(0, 0, 0, 0.3);
+            }
+            td {
+                height: 100px !important;
+            }
+            #leftright {
+                position: absolute;
+                top: 0;
+                width: 100%;
+                height: 50px;
+                font-size: 50px;
+            }
+            #left, #right {
+                position: absolute;
+                font-size: 50px;
+                width: 50px;
+                height: 50px;
+                top: 0;
+            }
+            #left {
+                left: 0;
+            }
+            #right {
+                right: 0;
+            }
+            #header {
+                height: 100px;
+                padding: 15px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            #header > * {
+                flex: 1;
+            }
+            #header *:last-child {
+                text-align: right;
+            }
+            svg {
+                width: 100%;
+                height: 100%;
+            }
+            .channels, .week {
+                height: 75px;
+            }
+            table#top * {
+                border-bottom: 0 !important;
+            }
+            #selector {
+                text-align: center
+            }
+            .bx {
+                vertical-align: middle;
+                color: var(--bs-body-color)
+            }
+            #alerts {
+                position: fixed;
+                top: 5%;
+                left: 50%;
+                transform: translate(-50%,0);
+                width: 95%;
+                display: none;
+                z-index: -1;
+            }
+            #alerts:has(*) {
+                z-index: 2000;
+                display: block;
+            }
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+        <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+        <script>
+            $(function() {
+                Date.prototype.addDays = function(days) {
+                    let date = new Date(this.valueOf());
+                    date.setDate(date.getDate() + days);
+                    return date;
+                }
+
+                function getMonday(d) {
+                    d = new Date(d);
+                    let day = d.getDay(),
+                        diff = d.getDate() - day + (day == 0 ? -6 : 1);
+                    return new Date(d.setDate(diff));
+                }
+
+                let current = {
+                    // 0 - channels
+                    // 1 - week
+                    viewing: 1,
+                    channels: 1,
+                    channel: 1,
+                    monday: getMonday(new Date()),
+                    day: new Date()
+                };
+                let maxChannel = parseInt($.ajax({
+                    type: "GET",
+                    url: "/api/channels/max",
+                    async: false
+                }).responseText);
+
+                function updateData() {
+                    let apiEndpoint;
+                    if (current.viewing === 1) {
+                        const startDate = current.monday.toISOString().split('T')[0];
+                        const endDate = current.monday.addDays(6).toISOString().split('T')[0];
+                        apiEndpoint = `/api/schedule?startDay=${startDate}&endDay=${endDate}&channels=${current.channel}`;
+                    } else {
+                        const startDate = current.day.toISOString().split('T')[0];
+                        let channelsToGet = `${current.channels}`;
+                        for (let i = 1; i < 7; i++) {
+                            channelsToGet += "," + (current.channels + i)
+                        }
+                        apiEndpoint = `/api/schedule?startDay=${startDate}&channels=${channelsToGet}`;
+                    }
+                    console.log(apiEndpoint)
+                    return fetch(apiEndpoint, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! Status: ${response.status}`);
+                            }
+                            return response.json();
+                        })
+                        .then(showTimes => {
+                            console.log('Show Times for the week:', showTimes);
+                            updatePageData(showTimes);
+                            return showTimes;
+                        })
+                        .catch(error => {
+                            console.error('Error fetching show times:', error);
+                            errorMessage();
+                        });
+                }
+
+                function clearPageData() {
+                    $("#events").children().each(function() {
+                        $(this).children().each(function() {
+                            $(this).empty();
+                        });
+                    });
+                }
+
+                function updatePageData(data) {
+                    clearPageData();
+
+                    if (!data) {
+                        return;
+                    }
+
+                    data.forEach(show => {
+                        if (current.viewing === 1) {
+                            const showDate = new Date(show.ShowTime);
+                            const dayIndex = (showDate.getDay() + 6) % 7;
+                            const showTime = showDate.toTimeString().split(' ')[0].substring(0, 5);
+                            const showElement = $("<div>").text(`${show.ShowName} (${showTime})`);
+                            $(`#events td`).eq(dayIndex).append(showElement);
+                        } else {
+                            const showDate = new Date(show.ShowTime);
+                            const showTime = showDate.toTimeString().split(' ')[0].substring(0, 5);
+                            const showElement = $("<div>").text(`${show.ShowName} (${showTime})`);
+                            $(`#events td`).eq(show.ChannelID % 7).append(showElement);
+                        }
+                    });
+                }
+
+                function changePage(where) {
+                    if (current.viewing === 0) {
+                        let channel = current.channels;
+                        channel = channel + 7 * where <= 0 ? 1 : channel + 7 * where;
+                        current.channels = channel > maxChannel ? current.channels : channel;
+                        $(".channels .channel").each(function(i) {
+                            ic = i + current.channels;
+                            $(this).text(ic > maxChannel ? "-" : ic);
+                        });
+                    } else {
+                        current.monday = current.monday.addDays(7 * where);
+                        $(".week .day").each(function(i) {
+                            let monday = current.monday.addDays(i);
+                            let month = monday.getMonth() + 1;
+                            let day = monday.getDate();
+                            if (day < 10) {
+                                day = '0' + day;
+                            }
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            $(this).text(month + "/" + day);
+                        });
+                    }
+                    updateData().then(data => updatePageData(data));
+                }
+
+                function changeSelectedData(where) {
+                    if (current.viewing === 0) {
+                        $("#leftSelector").prop("disabled", false);
+                        $("#rightSelector").prop("disabled", false);
+                        current.day = current.day.addDays(where);
+                        let month = current.day.getMonth() + 1;
+                        let day = current.day.getDate();
+                        if (day < 10) {
+                            day = '0' + day;
+                        }
+                        if (month < 10) {
+                            month = '0' + month;
+                        }
+                        $("#daySelected").text(month + "/" + day);
+                    } else {
+                        let channel = current.channel;
+                        channel = channel + where <= 0 ? 1 : channel + where;
+                        current.channel = channel > maxChannel ? current.channel : channel;
+                        $("#leftSelector").prop("disabled", current.channel === 1);
+                        $("#rightSelector").prop("disabled", current.channel >= maxChannel);
+                        $("#channelSelected").text("Channel " + current.channel);
+                    }
+                    updateData().then(data => updatePageData(data));
+                }
+
+                function updatePage() {
+                    $(".channels, .hideOnWeeks").css("display", current.viewing === 0 ? "" : "none");
+                    $(".week, .hideOnChannels").css("display", current.viewing === 0 ? "none" : "");
+                    changePage(0);
+                    changeSelectedData(0);
+                }
+
+                $("#left").on("click", function() {
+                    changePage(-1);
+                });
+
+                $("#right").on("click", function() {
+                    changePage(1);
+                });
+
+                $("#channelViewBtn").on("click", function() {
+                    current.viewing = 0;
+                    updatePage();
+                });
+
+                $("#weekViewBtn").on("click", function() {
+                    current.viewing = 1;
+                    updatePage();
+                });
+
+                $("#leftSelector").on("click", function() {
+                    changeSelectedData(-1);
+                });
+
+                $("#rightSelector").on("click", function() {
+                    changeSelectedData(1);
+                });
+
+                function errorMessage() {
+                    let mainDiv = $("<div>", {
+                        class: "alert alert-danger alert-dismissible",
+                        role: "alert",
+                    });
+                    mainDiv.append($("<h4>", {
+                        class: "alert-heading",
+                        text: "There was an error"
+                    }));
+                    mainDiv.append($("<div>", {
+                        class: "alert-danger",
+                        text: "View the console for more information."
+                    }));
+                    mainDiv.append($("<button>", {
+                        type:"button",
+                        class:"btn-close",
+                        "data-bs-dismiss":"alert",
+                        "aria-label":"Close",
+                    }));
+                    $("#alerts").append(mainDiv)
+                }
+                $("#login").click(function() {
+                    $.ajax({
+                        url: "/api/login",
+                        method: "POST",
+                        async: false,
+                        data: JSON.stringify({
+                            username: $("#username").val(),
+                            password: $("#password").val()
+                        }),
+                        dataType: 'json', // payload is json
+                        contentType : 'application/json',
+                    }).done(function (data) {
+                        $("#loginModal").modal("hide")
+                    }).fail(function(errData) {
+                        console.log(errData.responseText)
+                        console.log(errData)
+                        errorMessage()
+                    });
+                })
+                $("#register").click(function() {
+                    $.ajax({
+                        url: "/api/register",
+                        method: "POST",
+                        async: false,
+                        data: JSON.stringify({
+                            username: $("#username").val(),
+                            password: $("#password").val()
+                        }),
+                        dataType: 'json', // payload is json
+                        contentType : 'application/json',
+                    }).done(function (data) {
+                        $("#loginModal").modal("hide")
+                    }).fail(function(errData) {
+                        console.log(errData.responseText)
+                        console.log(errData)
+                        errorMessage()
+                    });
+                });
+
+                $("#createChannel").click(function() {
+                    let channelName = $("#channelNameCreation").val();
+                    if (channelName) {
+                        $.ajax({
+                            url: "/api/channels",
+                            method: "POST",
+                            data: JSON.stringify({ channelName: channelName }),
+                            contentType: 'application/json',
+                            success: function(response) {
+                                console.log("Channel created successfully:", response);
+                                alert("Channel created successfully");
+                            },
+                            error: function(error) {
+                                console.error("Error creating channel:", error);
+                                errorMessage()
+                            }
+                        });
+                    } else {
+                        alert("Please enter a channel name.");
+                    }
+                });
+
+                // Function to create a new show
+                $("#createShow").click(function() {
+                    let channelID = $("#showChannelId").val();
+                    let showName = $("#showName").val();
+                    if (channelID && showName) {
+                        $.ajax({
+                            url: "/api/shows",
+                            method: "POST",
+                            data: JSON.stringify({ channelID: channelID, showName: showName }),
+                            contentType: 'application/json',
+                            success: function(response) {
+                                console.log("Show created successfully:", response);
+                                alert("Show created successfully");
+                            },
+                            error: function(error) {
+                                console.error("Error creating show:", error);
+                                errorMessage()
+                            }
+                        });
+                    } else {
+                        alert("Please enter both channel ID and show name.");
+                    }
+                });
+                $("#bindShowTime").click(function() {
+                    let showID = $("#showTimeId").val();
+                    let showTime = $("#showTimeId").siblings('input').val();
+                    if (showID && showTime) {
+                        $.ajax({
+                            url: "/api/schedule",
+                            method: "POST",
+                            data: JSON.stringify({ showID: showID, showTime: showTime }),
+                            contentType: 'application/json',
+                            success: function(response) {
+                                console.log("Show schedule created successfully:", response);
+                                alert("Show schedule created successfully");
+                            },
+                            error: function(error) {
+                                console.error("Error creating show schedule:", error);
+                                errorMessage();
+                            }
+                        });
+                    } else {
+                        alert("Please select a show and enter a time.");
+                    }
+                });
+                $.ajax({
+                    url: "/api/shows",
+                    method: "GET",
+                    success: function(data) {
+                        data.forEach((d) => {
+                            let option = $("<option>", {
+                                value: d.ShowID,
+                                text: `[${d.ShowID}] ${d.ShowName} - Channel ${d.ChannelID}`,
+                            });
+                            $("#showTimeId").append(option)
+                        })
+                    }
+                });
+                $.ajax({
+                    url: "/api/channels",
+                    method: "GET",
+                    success: function(data) {
+                        data.forEach((d) => {
+                            let option = $("<option>", {
+                                value: d.ChannelID,
+                                text: `[${d.ChannelID}] ${d.ChannelName}`,
+                            });
+                            $("#showChannelId").append(option)
+                        })
+                    }
+                });
+                updatePage();
+            });
+        </script>
+    </head>
+    <body>
+        <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-light">
+                        <h1 class="modal-title fs-5 text-black" id="loginModalLabel">Login/Register</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="username">Username</label>
+                                <input type="text" class="form-control" id="username">
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Password</label>
+                                <input type="password" class="form-control" id="password">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-primary" id="login">Login</button>
+                            <button type="button" class="btn btn-primary" id="register">Register</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div id="alerts">
+
+        </div>
+        <div id="header">
+            <div class="dropdown">
+                <a class="btn btn-light border-secondary dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Select view mode
+                </a>
+              
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" id="channelViewBtn" href="#">Programs on each channel per day</a></li>
+                    <li><a class="dropdown-item" id="weekViewBtn" href="#">Programs on a specific channel per week</a></li>
+                </ul>
+            </div>
+            <div id="selector">
+                <div class="btn-group btn-light border-secondary" id="channelSelector">
+                    <button type="button" class="btn btn-light" id="leftSelector">
+                        <i class='bx bxs-chevron-left'></i>
+                    </button>
+                    <button type="button" class="btn btn-light hideOnChannels" disabled id="channelSelected">
+                        -
+                    </button>
+                    <button type="button" class="btn btn-light hideOnWeeks" disabled id="daySelected" style="display: none;">
+                        -
+                    </button>
+                    <button type="button" class="btn btn-light" id="rightSelector">
+                        <i class='bx bxs-chevron-right'></i>
+                    </button>
+                </div>
+            </div>
+            <div>
+                <button type="button" class="btn btn-light border-secondary" data-bs-toggle="modal" data-bs-target="#loginModal">Login</button>
+            </div>
+        </div>
+        <div id="adminMenu">
+            <label for="channelNameCreation" class="form-label">Create a channel</label>
+            <div class="input-group">
+                <input type="text" class="form-control" id="channelNameCreation" aria-describedby="basic-addon4">
+                <button class="btn btn-outline-primary" type="button" id="createChannel">Create</button>
+            </div>
+            <div class="form-text" id="basic-addon4">The channel name to create</div>
+            <hr class="border-black"/>
+            <label for="channelNameCreation" class="form-label">Create a show</label>
+            <div class="input-group">
+                <input type="text" class="form-control" placeholder="Show name" aria-label="Show name" id="showName">
+                <label class="input-group-text" for="showChannelId">@</label>
+                <select class="form-select" id="showChannelId">
+                    <option selected>Channel ID</option>
+<!--                    <option value="1">One</option>-->
+<!--                    <option value="2">Two</option>-->
+<!--                    <option value="3">Three</option>-->
+                </select>
+                <button class="btn btn-outline-primary" type="button" id="createShow">Create</button>
+            </div>
+            <hr class="border-black"/>
+            <label for="channelNameCreation" class="form-label">Bind show to a time</label>
+            <div class="input-group">
+                <select class="form-select" id="showTimeId">
+                    <option selected>Show</option>
+                    <!--                    <option value="1">One</option>-->
+                    <!--                    <option value="2">Two</option>-->
+                    <!--                    <option value="3">Three</option>-->
+                </select>
+                <label class="input-group-text" for="showChannelId">@</label>
+                <input type="text" class="form-control" placeholder="Time (YYYY-MM-DD HH:MM)" aria-label="Time (YYYY-MM-DD HH:MM)">
+                <button class="btn btn-outline-primary" type="button" id="bindShowTime">Bind</button>
+            </div>
+            <hr class="border-black"/>
+        </div>
+        <div id="calendar">
+            <div id="leftright">
+                <a id="left" href="#">
+                    <i class='bx bxs-chevron-left'></i>
+                </a>
+                <a id="right" href="#">
+                    <i class='bx bxs-chevron-right'></i>
+                </a>
+            </div>
+            <table id="top" class="table-bordered border-light-subtle">
+                <thead class="week text-center">
+                    <tr>
+                        <th><span class="small">MON</span><br/><span class="day">-</span></th>
+                        <th><span class="small">TUE</span><br/><span class="day">-</span></th>
+                        <th><span class="small">WED</span><br/><span class="day">-</span></th>
+                        <th><span class="small">THU</span><br/><span class="day">-</span></th>
+                        <th><span class="small">FRI</span><br/><span class="day">-</span></th>
+                        <th><span class="small">SAT</span><br/><span class="day">-</span></th>
+                        <th><span class="small">SUN</span><br/><span class="day">-</span></th>
+                    </tr>
+                </thead>
+                <thead class="channels text-center" style="display: none;">
+                    <tr>
+                        <th><span class="small">CHANNEL</span><br/><span class="channel">-</span></th>
+                        <th><span class="small">CHANNEL</span><br/><span class="channel">-</span></th>
+                        <th><span class="small">CHANNEL</span><br/><span class="channel">-</span></th>
+                        <th><span class="small">CHANNEL</span><br/><span class="channel">-</span></th>
+                        <th><span class="small">CHANNEL</span><br/><span class="channel">-</span></th>
+                        <th><span class="small">CHANNEL</span><br/><span class="channel">-</span></th>
+                        <th><span class="small">CHANNEL</span><br/><span class="channel">-</span></th>
+                    </tr>
+                </thead>
+            </table>
+            <table class="table table-bordered border-light-subtle">
+                <tbody>
+                    <tr id="events">
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </body>
+</html>
